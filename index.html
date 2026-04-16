@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chatbot Pháp Luật - Đại học CSND</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Markdown Parser (marked.js) for rendering AI responses -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .markdown-body p { margin-bottom: 0.75rem; }
+        .markdown-body ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 0.75rem; }
+        .markdown-body ol { list-style-type: decimal; margin-left: 1.5rem; margin-bottom: 0.75rem; }
+        .markdown-body strong { font-weight: 600; color: #1e3a8a; }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        /* TVPL Theme Colors */
+        .bg-tvpl-blue { background-color: #076DA5; }
+        .text-tvpl-blue { color: #076DA5; }
+        .bg-tvpl-orange { background-color: #FF9800; }
+        .hover-tvpl-orange:hover { background-color: #F57C00; }
+    </style>
+</head>
+<body class="bg-gray-100 overflow-hidden">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- SVGs Icons ---
+        const SendIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        );
+        const ShieldIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        );
+        const UserIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        );
+        const MenuIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        );
+
+        // --- Main App Component ---
+        const App = () => {
+            const [messages, setMessages] = useState([
+                { 
+                    role: 'bot', 
+                    text: 'Xin chào đồng chí! Tôi là Trợ lý AI Pháp luật của Trường Đại học Cảnh sát nhân dân. Tôi có thể giúp đồng chí tra cứu các quy định về Luật Hình sự, Tố tụng Hình sự, Hành chính và các văn bản liên quan đến lực lượng CAND. Đồng chí cần hỗ trợ vấn đề gì?' 
+                }
+            ]);
+            const [inputValue, setInputValue] = useState('');
+            const [isLoading, setIsLoading] = useState(false);
+            const [sidebarOpen, setSidebarOpen] = useState(true);
+            const messagesEndRef = useRef(null);
+
+            // Scroll to bottom on new message
+            useEffect(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, [messages]);
+
+            // Gemini API call with exponential backoff
+            const fetchGeminiResponse = async (prompt, chatHistory) => {
+                const apiKey = ""; // The execution environment provides the key at runtime
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+                
+                const systemPrompt = `Bạn là một AI tư vấn pháp luật chuyên nghiệp, được thiết kế dành riêng cho sinh viên và học viên Trường Đại học Cảnh sát nhân dân (T05) tại Việt Nam. 
+                Nhiệm vụ của bạn là:
+                1. Trả lời các câu hỏi về pháp luật (đặc biệt: Luật Hình sự, Tố tụng Hình sự, Hành chính, Giao thông, và các quy chế của ngành Công an).
+                2. Phân tích tình huống pháp lý và đưa ra hướng xử lý dựa trên luật hiện hành.
+                3. Xưng hô: "Tôi" và gọi người dùng là "đồng chí" hoặc "bạn". Giọng điệu nghiêm túc, chuẩn mực, chính xác, mang tính vũ trang và học thuật.
+                4. Luôn trích dẫn cơ sở pháp lý (điều, khoản, luật nào) nếu có thể.
+                5. Cung cấp thông tin ngắn gọn, dễ hiểu, trình bày bằng Markdown.`;
+
+                // Build contents payload
+                const contents = chatHistory.map(msg => ({
+                    role: msg.role === 'bot' ? 'model' : 'user',
+                    parts: [{ text: msg.text }]
+                }));
+                contents.push({ role: 'user', parts: [{ text: prompt }] });
+
+                const payload = {
+                    contents: contents,
+                    systemInstruction: { parts: [{ text: systemPrompt }] }
+                };
+
+                const delays = [1000, 2000, 4000, 8000, 16000];
+                for (let attempt = 0; attempt <= 5; attempt++) {
+                    try {
+                        const response = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                        
+                        const data = await response.json();
+                        if (data.candidates && data.candidates[0].content.parts[0].text) {
+                            return data.candidates[0].content.parts[0].text;
+                        } else {
+                            throw new Error("Invalid response format");
+                        }
+                    } catch (error) {
+                        if (attempt === 5) {
+                            return "Đã xảy ra lỗi kết nối với máy chủ AI. Vui lòng kiểm tra lại đường truyền hoặc thử lại sau.";
+                        }
+                        await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+                    }
+                }
+            };
+
+            const handleSendMessage = async (e) => {
+                e?.preventDefault();
+                if (!inputValue.trim() || isLoading) return;
+
+                const userMsg = inputValue.trim();
+                setInputValue('');
+                
+                // Exclude the initial greeting from history to save tokens if desired, 
+                // but keeping it is fine. We take the last 10 messages for context.
+                const historyContext = messages.slice(-10);
+                
+                setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+                setIsLoading(true);
+
+                const responseText = await fetchGeminiResponse(userMsg, historyContext);
+                
+                setMessages(prev => [...prev, { role: 'bot', text: responseText }]);
+                setIsLoading(false);
+            };
+
+            const handleKeyDown = (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                }
+            };
+
+            const quickPrompts = [
+                "Cấu thành tội lừa đảo chiếm đoạt tài sản theo BLHS 2015?",
+                "Quy trình khám xét chỗ ở trong Tố tụng hình sự?",
+                "Các trường hợp nổ súng của Cảnh sát bảo vệ?",
+                "Thẩm quyền xử phạt vi phạm hành chính của CSTT?"
+            ];
+
+            return (
+                <div className="flex h-screen bg-gray-50 flex-col md:flex-row">
+                    
+                    {/* Sidebar */}
+                    <div className={`${sidebarOpen ? 'w-full md:w-80' : 'w-0'} transition-all duration-300 bg-white border-r border-gray-200 flex flex-col shrink-0 overflow-hidden relative z-10`}>
+                        <div className="p-4 bg-tvpl-blue text-white flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <ShieldIcon />
+                                <h1 className="font-bold text-lg leading-tight">ĐH CẢNH SÁT NHÂN DÂN</h1>
+                            </div>
+                            <button className="md:hidden p-1" onClick={() => setSidebarOpen(false)}>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                        
+                        <div className="p-4 overflow-y-auto flex-1">
+                            <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Chủ đề quan tâm</h2>
+                            <div className="space-y-2">
+                                {['Luật Hình sự', 'Luật Tố tụng Hình sự', 'Luật Hành chính', 'Luật Giao thông ĐB', 'Nghiệp vụ cơ bản'].map((topic, idx) => (
+                                    <div key={idx} className="flex items-center p-2 rounded-lg hover:bg-blue-50 cursor-pointer text-gray-700 text-sm font-medium border border-transparent hover:border-blue-100 transition-colors">
+                                        <div className="w-2 h-2 rounded-full bg-tvpl-orange mr-3"></div>
+                                        {topic}
+                                    </div>
+                                ))}
+                            </div>
+
+                            <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mt-8 mb-3">Câu hỏi thường gặp</h2>
+                            <div className="space-y-2">
+                                {quickPrompts.map((prompt, idx) => (
+                                    <button 
+                                        key={idx}
+                                        onClick={() => setInputValue(prompt)}
+                                        className="w-full text-left text-sm p-3 rounded bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 transition-colors shadow-sm"
+                                    >
+                                        "{prompt}"
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <div className="p-4 border-t bg-gray-50 text-xs text-gray-500 text-center">
+                            Dữ liệu dựa trên hệ thống văn bản pháp luật hiện hành. Phục vụ học tập và nghiên cứu.
+                        </div>
+                    </div>
+
+                    {/* Main Chat Area */}
+                    <div className="flex-1 flex flex-col h-full bg-white relative">
+                        {/* Header */}
+                        <header className="h-16 border-b border-gray-200 bg-white flex items-center px-4 justify-between shrink-0 shadow-sm">
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-md hover:bg-gray-100 text-gray-600 transition-colors">
+                                    <MenuIcon />
+                                </button>
+                                <div>
+                                    <h2 className="font-bold text-tvpl-blue text-lg">Trợ lý Pháp luật AI</h2>
+                                    <p className="text-xs text-green-600 flex items-center">
+                                        <span className="w-2 h-2 rounded-full bg-green-500 mr-1 animate-pulse"></span>
+                                        Hệ thống sẵn sàng
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="hidden sm:block">
+                                <img src="https://cdn.thuvienphapluat.vn/images/LogoTVPL_1024_Full.png" alt="Logo" className="h-8 opacity-50 grayscale hover:grayscale-0 transition-all"/>
+                            </div>
+                        </header>
+
+                        {/* Chat Messages */}
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-gray-50 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
+                            <div className="max-w-3xl mx-auto space-y-6">
+                                {messages.map((msg, index) => (
+                                    <div key={index} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-sm ${msg.role === 'user' ? 'bg-gray-200 text-gray-600' : 'bg-tvpl-blue text-white'}`}>
+                                            {msg.role === 'user' ? <UserIcon /> : <ShieldIcon />}
+                                        </div>
+                                        <div className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 shadow-sm ${
+                                            msg.role === 'user' 
+                                                ? 'bg-tvpl-blue text-white rounded-tr-sm' 
+                                                : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm'
+                                        }`}>
+                                            {msg.role === 'user' ? (
+                                                <div className="whitespace-pre-wrap">{msg.text}</div>
+                                            ) : (
+                                                <div 
+                                                    className="markdown-body text-sm sm:text-base"
+                                                    dangerouslySetInnerHTML={{ __html: marked.parse(msg.text) }} 
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                                
+                                {isLoading && (
+                                    <div className="flex gap-4">
+                                        <div className="w-10 h-10 rounded-full bg-tvpl-blue text-white flex items-center justify-center shrink-0 shadow-sm">
+                                            <ShieldIcon />
+                                        </div>
+                                        <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-sm p-4 shadow-sm flex items-center gap-2">
+                                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
+                                        </div>
+                                    </div>
+                                )}
+                                <div ref={messagesEndRef} />
+                            </div>
+                        </div>
+
+                        {/* Input Area */}
+                        <div className="p-4 bg-white border-t border-gray-200 shrink-0">
+                            <div className="max-w-3xl mx-auto relative">
+                                <form onSubmit={handleSendMessage} className="flex gap-2">
+                                    <textarea
+                                        value={inputValue}
+                                        onChange={(e) => setInputValue(e.target.value)}
+                                        onKeyDown={handleKeyDown}
+                                        placeholder="Nhập tình huống pháp lý hoặc câu hỏi của đồng chí... (Shift + Enter để xuống dòng)"
+                                        className="w-full resize-none rounded-xl border border-gray-300 bg-gray-50 py-3 pl-4 pr-12 focus:border-tvpl-blue focus:bg-white focus:ring-1 focus:ring-tvpl-blue transition-all"
+                                        rows="2"
+                                        disabled={isLoading}
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={isLoading || !inputValue.trim()}
+                                        className="absolute right-2 top-2 bottom-2 aspect-square flex items-center justify-center rounded-lg bg-tvpl-orange text-white hover-tvpl-orange disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                                        title="Gửi"
+                                    >
+                                        <SendIcon />
+                                    </button>
+                                </form>
+                                <p className="text-center text-xs text-gray-400 mt-2">
+                                    AI có thể cung cấp thông tin chưa chính xác. Học viên vui lòng đối chiếu trực tiếp với Giáo trình và Văn bản quy phạm pháp luật hiện hành.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
